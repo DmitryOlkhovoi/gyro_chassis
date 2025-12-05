@@ -23,3 +23,4 @@ extern float accelerationFilterAlpha;
 void updateSuspensionRange();
 void loadConfig();
 void saveConfig();
+void resetConfigToDefaults();

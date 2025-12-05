@@ -3,27 +3,40 @@
 
 // Базовые параметры подвески с подробными именами для наглядности
 // Base suspension parameters with explicit names for clarity
-float suspensionOffsetDegrees       = 90.0f;   // Центральный угол / Center angle
-float suspensionTravelShare         = 0.25f;   // Доля хода для подвески / Share of servo travel used for suspension
+static const float defaultSuspensionOffsetDegrees      = 90.0f;   // Центральный угол / Center angle
+static const float defaultSuspensionTravelShare        = 0.25f;   // Доля хода для подвески / Share of servo travel used for suspension
+static const float defaultFrontSpringStiffness         = 5.0f;
+static const float defaultFrontDampingCoefficient      = 1.5f;
+static const float defaultRearSpringStiffness          = 3.0f;
+static const float defaultRearDampingCoefficient       = 1.2f;
+static const float defaultFrontBalanceFactor           = 1.0f;
+static const float defaultRearBalanceFactor            = 0.8f;
+static const float defaultDynamicPitchInfluence        = 0.5f; // kDynPitch
+static const float defaultDynamicRollInfluence         = 0.5f; // kDynRoll
+static const float defaultDynamicHeaveInfluence        = 0.3f; // kDynHeave
+static const float defaultAccelerationFilterAlpha      = 0.1f;
+
+float suspensionOffsetDegrees       = defaultSuspensionOffsetDegrees;
+float suspensionTravelShare         = defaultSuspensionTravelShare;
 const float totalServoRangeDegrees  = 180.0f;  // Полный ход сервы / Full servo range
 float suspensionRangeDegrees        = totalServoRangeDegrees * suspensionTravelShare;
 float suspensionHalfRangeDegrees    = suspensionRangeDegrees / 2.0f;
 
 // Коэффициенты для модели пружина-демпфер / Spring-damper model coefficients
-float frontSpringStiffness      = 5.0f;
-float frontDampingCoefficient   = 1.5f;
-float rearSpringStiffness       = 3.0f;
-float rearDampingCoefficient    = 1.2f;
+float frontSpringStiffness      = defaultFrontSpringStiffness;
+float frontDampingCoefficient   = defaultFrontDampingCoefficient;
+float rearSpringStiffness       = defaultRearSpringStiffness;
+float rearDampingCoefficient    = defaultRearDampingCoefficient;
 
 // Баланс сил по осям / Balance factors for front vs rear influence
-float frontBalanceFactor = 1.0f;
-float rearBalanceFactor  = 0.8f;
+float frontBalanceFactor = defaultFrontBalanceFactor;
+float rearBalanceFactor  = defaultRearBalanceFactor;
 
 // Динамические коэффициенты и фильтрация ускорений / Dynamic coefficients and acceleration filtering
-float dynamicPitchInfluence  = 0.5f; // kDynPitch
-float dynamicRollInfluence   = 0.5f; // kDynRoll
-float dynamicHeaveInfluence  = 0.3f; // kDynHeave
-float accelerationFilterAlpha = 0.1f;
+float dynamicPitchInfluence  = defaultDynamicPitchInfluence; // kDynPitch
+float dynamicRollInfluence   = defaultDynamicRollInfluence; // kDynRoll
+float dynamicHeaveInfluence  = defaultDynamicHeaveInfluence; // kDynHeave
+float accelerationFilterAlpha = defaultAccelerationFilterAlpha;
 
 static Preferences prefs;
 
@@ -69,4 +82,21 @@ void saveConfig() {
   prefs.putFloat("dynHeave", dynamicHeaveInfluence);
   prefs.putFloat("accAlpha", accelerationFilterAlpha);
   prefs.end();
+}
+
+void resetConfigToDefaults() {
+  suspensionOffsetDegrees      = defaultSuspensionOffsetDegrees;
+  suspensionTravelShare        = defaultSuspensionTravelShare;
+  frontSpringStiffness         = defaultFrontSpringStiffness;
+  frontDampingCoefficient      = defaultFrontDampingCoefficient;
+  rearSpringStiffness          = defaultRearSpringStiffness;
+  rearDampingCoefficient       = defaultRearDampingCoefficient;
+  frontBalanceFactor           = defaultFrontBalanceFactor;
+  rearBalanceFactor            = defaultRearBalanceFactor;
+  dynamicPitchInfluence        = defaultDynamicPitchInfluence;
+  dynamicRollInfluence         = defaultDynamicRollInfluence;
+  dynamicHeaveInfluence        = defaultDynamicHeaveInfluence;
+  accelerationFilterAlpha      = defaultAccelerationFilterAlpha;
+  updateSuspensionRange();
+  saveConfig();
 }
