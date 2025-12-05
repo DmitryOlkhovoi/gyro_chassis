@@ -61,6 +61,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <label>Баланс зад (rearBalance 0..1)
         <input step="0.1" min="0" max="1.5" type="number" id="rearBalance" name="rearBalance" value="%REARBAL%" required>
       </label>
+      <label>Динамика тангажа (kDynPitch)
+        <input step="0.05" type="number" id="dynamicPitchInfluence" name="dynamicPitchInfluence" value="%KDYN_PITCH%" required>
+      </label>
+      <label>Динамика крена (kDynRoll)
+        <input step="0.05" type="number" id="dynamicRollInfluence" name="dynamicRollInfluence" value="%KDYN_ROLL%" required>
+      </label>
+      <label>Вертикальная динамика (kDynHeave)
+        <input step="0.05" type="number" id="dynamicHeaveInfluence" name="dynamicHeaveInfluence" value="%KDYN_HEAVE%" required>
+      </label>
+      <label>Сглаживание ускорений (alpha 0..1)
+        <input step="0.01" min="0" max="1" type="number" id="accelerationFilterAlpha" name="accelerationFilterAlpha" value="%ACC_ALPHA%" required>
+      </label>
       <button type="submit" id="saveBtn">Сохранить</button>
       <div id="status"></div>
     </form>
@@ -139,6 +151,10 @@ static String buildPage() {
   page.replace("%CREAR%", String(rearDampingCoefficient, 2));
   page.replace("%FRONTBAL%", String(frontBalanceFactor, 2));
   page.replace("%REARBAL%", String(rearBalanceFactor, 2));
+  page.replace("%KDYN_PITCH%", String(dynamicPitchInfluence, 2));
+  page.replace("%KDYN_ROLL%", String(dynamicRollInfluence, 2));
+  page.replace("%KDYN_HEAVE%", String(dynamicHeaveInfluence, 2));
+  page.replace("%ACC_ALPHA%", String(accelerationFilterAlpha, 2));
   return page;
 }
 
@@ -173,6 +189,18 @@ static void handleSave() {
   }
   if (configurationWebServer.hasArg("rearBalance"))  {
     rearBalanceFactor  = configurationWebServer.arg("rearBalance").toFloat();
+  }
+  if (configurationWebServer.hasArg("dynamicPitchInfluence")) {
+    dynamicPitchInfluence = configurationWebServer.arg("dynamicPitchInfluence").toFloat();
+  }
+  if (configurationWebServer.hasArg("dynamicRollInfluence")) {
+    dynamicRollInfluence = configurationWebServer.arg("dynamicRollInfluence").toFloat();
+  }
+  if (configurationWebServer.hasArg("dynamicHeaveInfluence")) {
+    dynamicHeaveInfluence = configurationWebServer.arg("dynamicHeaveInfluence").toFloat();
+  }
+  if (configurationWebServer.hasArg("accelerationFilterAlpha")) {
+    accelerationFilterAlpha = constrain(configurationWebServer.arg("accelerationFilterAlpha").toFloat(), 0.0f, 1.0f);
   }
 
   updateSuspensionRange();

@@ -15,6 +15,11 @@ extern float rearDampingCoefficient;
 extern float frontBalanceFactor;
 extern float rearBalanceFactor;
 
+extern float dynamicPitchInfluence;
+extern float dynamicRollInfluence;
+extern float dynamicHeaveInfluence;
+extern float accelerationFilterAlpha;
+
 void updateSuspensionRange();
 void loadConfig();
 void saveConfig();
