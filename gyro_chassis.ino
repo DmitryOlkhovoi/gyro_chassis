@@ -6,38 +6,63 @@
 #include "telemetry.h"
 #include "web_server.h"
 
-MPU6050 mpu;
+MPU6050 mpuSensor;
 
-Servo servoFL; // Front Left
-Servo servoFR; // Front Right
-Servo servoRL; // Rear Left
-Servo servoRR; // Rear Right
+Servo servoFrontLeft;  // Front Left servo (левый передний привод)
+Servo servoFrontRight; // Front Right servo (правый передний привод)
+Servo servoRearLeft;   // Rear Left servo (левый задний привод)
+Servo servoRearRight;  // Rear Right servo (правый задний привод)
 
+// Servo state that models the suspension with a simple spring-damper model
+// Состояние сервы, имитирующее подвеску через простую модель пружины и демпфера
 struct SpringServo {
-  float x;
-  float v;
+  float positionDegrees;           // Текущий угол сервы в градусах / Current servo angle in degrees
+  float velocityDegreesPerSecond;  // Угловая скорость в град/с / Angular velocity in deg/s
 };
 
-SpringServo sFL, sFR, sRL, sRR;
+SpringServo springServoFrontLeft, springServoFrontRight, springServoRearLeft, springServoRearRight;
 
-unsigned long lastUpdate = 0;
+unsigned long lastUpdateMilliseconds = 0; // Отметка времени последнего цикла / Timestamp of last loop
 
-void updateSpringServo(SpringServo &s, float target, float dt, float k, float c) {
-  float error = s.x - target;
-  float force = -k * error - c * s.v;
-  float a = force;
+// Step physics simulation for one servo
+// Выполняем шаг физической модели для одной сервы
+void updateSpringServo(
+  SpringServo &springServo,
+  float targetPositionDegrees,
+  float deltaTimeSeconds,
+  float stiffnessCoefficient,
+  float dampingCoefficient
+) {
+  // Оцениваем отклонение от цели и силу пружины с демпфированием
+  // Compute deviation from the target and resulting spring-damper force
+  float positionErrorDegrees = springServo.positionDegrees - targetPositionDegrees;
+  float springDamperForce = -stiffnessCoefficient * positionErrorDegrees - dampingCoefficient * springServo.velocityDegreesPerSecond;
 
-  s.v += a * dt;
-  s.x += s.v * dt;
+  // В простейшей модели ускорение совпадает с силой (масса = 1)
+  // In this simplified model acceleration equals force (mass = 1)
+  float angularAcceleration = springDamperForce;
 
-  float minPos = offset - suspHalf;
-  float maxPos = offset + suspHalf;
+  springServo.velocityDegreesPerSecond += angularAcceleration * deltaTimeSeconds;
+  springServo.positionDegrees += springServo.velocityDegreesPerSecond * deltaTimeSeconds;
 
-  if (s.x < minPos) { s.x = minPos; s.v = 0; }
-  if (s.x > maxPos) { s.x = maxPos; s.v = 0; }
+  // Ограничиваем ход подвески вокруг базового офсета
+  // Clamp suspension travel around the base offset
+  float minAllowedPosition = suspensionOffsetDegrees - suspensionHalfRangeDegrees;
+  float maxAllowedPosition = suspensionOffsetDegrees + suspensionHalfRangeDegrees;
 
-  if (s.x < 0)   s.x = 0;
-  if (s.x > 180) s.x = 180;
+  if (springServo.positionDegrees < minAllowedPosition) {
+    springServo.positionDegrees = minAllowedPosition;
+    springServo.velocityDegreesPerSecond = 0;
+  }
+  if (springServo.positionDegrees > maxAllowedPosition) {
+    springServo.positionDegrees = maxAllowedPosition;
+    springServo.velocityDegreesPerSecond = 0;
+  }
+
+  // Гарантируем допустимые углы сервы 0..180 градусов
+  // Guarantee servo angles stay within the 0..180 degree hardware limits
+  if (springServo.positionDegrees < 0)   springServo.positionDegrees = 0;
+  if (springServo.positionDegrees > 180) springServo.positionDegrees = 180;
 }
 
 void setup() {
@@ -45,92 +70,108 @@ void setup() {
 
   loadConfig();
 
+  // Настраиваем шину I2C и инерциальный модуль / Set up I2C bus and IMU
   Wire.begin(21, 22);
-  mpu.initialize();
+  mpuSensor.initialize();
 
-  servoFL.attach(33);
-  servoFR.attach(32);
-  servoRL.attach(27);
-  servoRR.attach(26);
+  // Привязываем сервы к соответствующим выводам / Attach servos to pins
+  servoFrontLeft.attach(33);
+  servoFrontRight.attach(32);
+  servoRearLeft.attach(27);
+  servoRearRight.attach(26);
 
-  sFL.x = sFR.x = sRL.x = sRR.x = offset;
-  sFL.v = sFR.v = sRL.v = sRR.v = 0.0f;
+  // Инициализируем состояние подвески в базовой позиции / Initialize suspension at base position
+  springServoFrontLeft.positionDegrees = springServoFrontRight.positionDegrees = suspensionOffsetDegrees;
+  springServoRearLeft.positionDegrees  = springServoRearRight.positionDegrees  = suspensionOffsetDegrees;
+  springServoFrontLeft.velocityDegreesPerSecond = springServoFrontRight.velocityDegreesPerSecond = 0.0f;
+  springServoRearLeft.velocityDegreesPerSecond  = springServoRearRight.velocityDegreesPerSecond  = 0.0f;
 
   startWeb();
 
-  lastUpdate = millis();
+  lastUpdateMilliseconds = millis();
 }
 
 void loop() {
-  unsigned long now = millis();
-  float dt = (now - lastUpdate) / 1000.0f;
-  if (dt <= 0)   dt = 0.001f;
-  if (dt > 0.05) dt = 0.05f;
-  lastUpdate = now;
+  unsigned long currentMillis = millis();
+  float deltaTimeSeconds = (currentMillis - lastUpdateMilliseconds) / 1000.0f;
+  if (deltaTimeSeconds <= 0)   deltaTimeSeconds = 0.001f; // Защита от нуля / Guard against zero
+  if (deltaTimeSeconds > 0.05) deltaTimeSeconds = 0.05f;  // Ограничиваем шаг интеграции / Cap integration step
+  lastUpdateMilliseconds = currentMillis;
 
-  int16_t ax, ay, az;
-  mpu.getAcceleration(&ax, &ay, &az);
+  // Читаем ускорения по осям / Read raw acceleration along axes
+  int16_t rawAccelerationX, rawAccelerationY, rawAccelerationZ;
+  mpuSensor.getAcceleration(&rawAccelerationX, &rawAccelerationY, &rawAccelerationZ);
 
-  accX = ax / 16384.0f;
-  accY = ay / 16384.0f;
-  accZ = az / 16384.0f;
+  accelerationXG = rawAccelerationX / 16384.0f;
+  accelerationYG = rawAccelerationY / 16384.0f;
+  accelerationZG = rawAccelerationZ / 16384.0f;
 
-  float angleX = atan2(accY, accZ) * 180.0f / PI;
-  float angleY = atan2(-accX, sqrt(accY * accY + accZ * accZ)) * 180.0f / PI;
+  // Вычисляем углы наклона из ускорений / Calculate tilt angles from acceleration
+  float rollAngleDegrees  = atan2(accelerationYG, accelerationZG) * 180.0f / PI;
+  float pitchAngleDegrees = atan2(-accelerationXG, sqrt(accelerationYG * accelerationYG + accelerationZG * accelerationZG)) * 180.0f / PI;
 
-  float roll  = constrain(angleX, -30.0f, 30.0f);
-  float pitch = constrain(angleY, -30.0f, 30.0f);
+  // Обрезаем углы для устойчивости / Constrain angles for stability
+  float limitedRollDegrees  = constrain(rollAngleDegrees, -30.0f, 30.0f);
+  float limitedPitchDegrees = constrain(pitchAngleDegrees, -30.0f, 30.0f);
 
-  currentRoll  = roll;
-  currentPitch = pitch;
+  currentRollDegrees  = limitedRollDegrees;
+  currentPitchDegrees = limitedPitchDegrees;
 
-  float normRoll  = constrain(roll  / 30.0f, -1.0f, 1.0f);
-  float normPitch = constrain(pitch / 30.0f, -1.0f, 1.0f);
+  // Нормируем углы до диапазона -1..1 / Normalize angles to -1..1
+  float normalizedRoll  = constrain(limitedRollDegrees  / 30.0f, -1.0f, 1.0f);
+  float normalizedPitch = constrain(limitedPitchDegrees / 30.0f, -1.0f, 1.0f);
 
-  float accelLong = accX;
-  if (fabs(accelLong) < 0.05f) accelLong = 0.0f;
-  float normAccelLong = constrain(accelLong / 0.5f, -1.0f, 1.0f);
+  // Фильтруем шум малых ускорений / Filter noise from small accelerations
+  float longitudinalAccelerationG = accelerationXG;
+  if (fabs(longitudinalAccelerationG) < 0.05f) longitudinalAccelerationG = 0.0f;
+  float normalizedLongitudinalAcceleration = constrain(longitudinalAccelerationG / 0.5f, -1.0f, 1.0f);
 
-  float accelLat = accY;
-  if (fabs(accelLat) < 0.05f) accelLat = 0.0f;
-  float normAccelLat = constrain(accelLat / 0.5f, -1.0f, 1.0f);
+  float lateralAccelerationG = accelerationYG;
+  if (fabs(lateralAccelerationG) < 0.05f) lateralAccelerationG = 0.0f;
+  float normalizedLateralAcceleration = constrain(lateralAccelerationG / 0.5f, -1.0f, 1.0f);
 
-  float weightPitchTilt  = 1.0f;
-  float weightPitchAccel = 0.7f;
+  // Весовые коэффициенты смешивания наклона и ускорения / Weights for tilt vs acceleration blending
+  float weightPitchFromTilt  = 1.0f;
+  float weightPitchFromAccel = 0.7f;
 
-  float weightRollTilt   = 1.0f;
-  float weightRollAccel  = 0.7f;
+  float weightRollFromTilt   = 1.0f;
+  float weightRollFromAccel  = 0.7f;
 
-  float pitchBlend = normPitch * weightPitchTilt + normAccelLong * weightPitchAccel;
-  float rollBlend  = normRoll  * weightRollTilt  + normAccelLat  * weightRollAccel;
+  // Формируем итоговый сигнал для каждой оси / Compose blended control signals
+  float blendedPitch = normalizedPitch * weightPitchFromTilt + normalizedLongitudinalAcceleration * weightPitchFromAccel;
+  float blendedRoll  = normalizedRoll  * weightRollFromTilt  + normalizedLateralAcceleration  * weightRollFromAccel;
 
-  pitchBlend = constrain(pitchBlend, -1.0f, 1.0f);
-  rollBlend  = constrain(rollBlend,  -1.0f, 1.0f);
+  blendedPitch = constrain(blendedPitch, -1.0f, 1.0f);
+  blendedRoll  = constrain(blendedRoll,  -1.0f, 1.0f);
 
-  float pitchFront = pitchBlend * frontBalance;
-  float pitchRear  = pitchBlend * rearBalance;
-  float rollSide   = rollBlend;
+  // Разносим сигнал по осям шасси / Map blended signals to chassis axes
+  float frontPitchComponent = blendedPitch * frontBalanceFactor;
+  float rearPitchComponent  = blendedPitch * rearBalanceFactor;
+  float rollSideComponent   = blendedRoll;
 
-  float mixFL = constrain(pitchFront - rollSide, -1.0f, 1.0f);
-  float mixFR = constrain(pitchFront + rollSide, -1.0f, 1.0f);
-  float mixRL = constrain(-pitchRear - rollSide, -1.0f, 1.0f);
-  float mixRR = constrain(-pitchRear + rollSide, -1.0f, 1.0f);
+  // Микшируем команды для каждой сервы / Mix servo commands per corner
+  float servoMixFrontLeft  = constrain(frontPitchComponent - rollSideComponent, -1.0f, 1.0f);
+  float servoMixFrontRight = constrain(frontPitchComponent + rollSideComponent, -1.0f, 1.0f);
+  float servoMixRearLeft   = constrain(-rearPitchComponent - rollSideComponent, -1.0f, 1.0f);
+  float servoMixRearRight  = constrain(-rearPitchComponent + rollSideComponent, -1.0f, 1.0f);
 
-  float targetFL = offset + mixFL * suspHalf;
-  float targetFR = offset + mixFR * suspHalf;
-  float targetRL = offset + mixRL * suspHalf;
-  float targetRR = offset + mixRR * suspHalf;
+  // Целевые углы с учётом базового офсета и допустимого хода / Target angles with base offset and travel limits
+  float targetFrontLeftDegrees  = suspensionOffsetDegrees + servoMixFrontLeft  * suspensionHalfRangeDegrees;
+  float targetFrontRightDegrees = suspensionOffsetDegrees + servoMixFrontRight * suspensionHalfRangeDegrees;
+  float targetRearLeftDegrees   = suspensionOffsetDegrees + servoMixRearLeft   * suspensionHalfRangeDegrees;
+  float targetRearRightDegrees  = suspensionOffsetDegrees + servoMixRearRight  * suspensionHalfRangeDegrees;
 
-  updateSpringServo(sFL, targetFL, dt, kFront, cFront);
-  updateSpringServo(sFR, targetFR, dt, kFront, cFront);
-  updateSpringServo(sRL, targetRL, dt, kRear,  cRear);
-  updateSpringServo(sRR, targetRR, dt, kRear,  cRear);
+  updateSpringServo(springServoFrontLeft,  targetFrontLeftDegrees,  deltaTimeSeconds, frontSpringStiffness, frontDampingCoefficient);
+  updateSpringServo(springServoFrontRight, targetFrontRightDegrees, deltaTimeSeconds, frontSpringStiffness, frontDampingCoefficient);
+  updateSpringServo(springServoRearLeft,   targetRearLeftDegrees,   deltaTimeSeconds, rearSpringStiffness,  rearDampingCoefficient);
+  updateSpringServo(springServoRearRight,  targetRearRightDegrees,  deltaTimeSeconds, rearSpringStiffness,  rearDampingCoefficient);
 
-  servoFL.write((int)sFL.x);
-  servoFR.write((int)sFR.x);
-  servoRL.write((int)sRL.x);
-  servoRR.write((int)sRR.x);
+  // Отправляем итоговые углы на сервы / Send final angles to physical servos
+  servoFrontLeft.write((int)springServoFrontLeft.positionDegrees);
+  servoFrontRight.write((int)springServoFrontRight.positionDegrees);
+  servoRearLeft.write((int)springServoRearLeft.positionDegrees);
+  servoRearRight.write((int)springServoRearRight.positionDegrees);
 
   handleWeb();
-  delay(5);
+  delay(5); // Небольшая пауза для стабильности / Small delay for stability
 }

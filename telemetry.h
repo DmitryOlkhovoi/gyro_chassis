@@ -1,7 +1,9 @@
 #pragma once
 
-extern float currentRoll;
-extern float currentPitch;
-extern float accX;
-extern float accY;
-extern float accZ;
+// Публичные данные IMU, обновляемые основным циклом и читаемые веб-сервером
+// Public IMU data updated by the main loop and read by the web server
+extern float currentRollDegrees;
+extern float currentPitchDegrees;
+extern float accelerationXG;
+extern float accelerationYG;
+extern float accelerationZG;

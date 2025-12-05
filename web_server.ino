@@ -3,10 +3,14 @@
 #include "config.h"
 #include "telemetry.h"
 
-const char *apSsid = "GyroChassis";
-const char *apPass = "12345678";
+// Параметры точки доступа, используемой для настройки подвески
+// Access point credentials used for suspension configuration
+const char *accessPointSsid = "GyroChassis";
+const char *accessPointPassword = "12345678";
 
-static WebServer server(80);
+// HTTP сервер, обслуживающий страницу конфигурации и телеметрию
+// HTTP server handling the configuration page and telemetry endpoints
+static WebServer configurationWebServer(80);
 
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -34,22 +38,22 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="card">
     <form id="configForm">
       <label>Базовая высота <small>(offset, °)</small>
-        <input step="0.1" type="number" id="offset" name="offset" value="%OFFSET%" required>
+        <input step="0.1" type="number" id="suspensionOffsetDegrees" name="suspensionOffsetDegrees" value="%OFFSET%" required>
       </label>
       <label>Доля хода сервы под подвеску <small>(share 0..1)</small>
-        <input step="0.01" min="0.01" max="1" type="number" id="share" name="share" value="%SHARE%" required>
+        <input step="0.01" min="0.01" max="1" type="number" id="suspensionTravelShare" name="suspensionTravelShare" value="%SHARE%" required>
       </label>
       <label>Жёсткость перед (kFront)
-        <input step="0.1" type="number" id="kFront" name="kFront" value="%KFRONT%" required>
+        <input step="0.1" type="number" id="frontSpringStiffness" name="frontSpringStiffness" value="%KFRONT%" required>
       </label>
       <label>Демпфирование перед (cFront)
-        <input step="0.1" type="number" id="cFront" name="cFront" value="%CFRONT%" required>
+        <input step="0.1" type="number" id="frontDampingCoefficient" name="frontDampingCoefficient" value="%CFRONT%" required>
       </label>
       <label>Жёсткость зад (kRear)
-        <input step="0.1" type="number" id="kRear" name="kRear" value="%KREAR%" required>
+        <input step="0.1" type="number" id="rearSpringStiffness" name="rearSpringStiffness" value="%KREAR%" required>
       </label>
       <label>Демпфирование зад (cRear)
-        <input step="0.1" type="number" id="cRear" name="cRear" value="%CREAR%" required>
+        <input step="0.1" type="number" id="rearDampingCoefficient" name="rearDampingCoefficient" value="%CREAR%" required>
       </label>
       <label>Баланс перед (frontBalance 0..1)
         <input step="0.1" min="0" max="1.5" type="number" id="frontBalance" name="frontBalance" value="%FRONTBAL%" required>
@@ -69,49 +73,49 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 const statusBox = document.getElementById('status');
 const saveBtn = document.getElementById('saveBtn');
 
-document.getElementById('configForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
+document.getElementById('configForm').addEventListener('submit', async (formSubmitEvent) => {
+  formSubmitEvent.preventDefault();
   saveBtn.disabled = true;
   statusBox.textContent = 'Сохраняю...';
   try {
-    const data = new FormData(e.target);
-    const body = new URLSearchParams(data);
-    const resp = await fetch('/save', { method: 'POST', body });
-    statusBox.textContent = await resp.text();
-  } catch (err) {
-    statusBox.textContent = 'Ошибка сохранения: ' + err;
+    const formData = new FormData(formSubmitEvent.target);
+    const requestBody = new URLSearchParams(formData);
+    const response = await fetch('/save', { method: 'POST', body: requestBody });
+    statusBox.textContent = await response.text();
+  } catch (error) {
+    statusBox.textContent = 'Ошибка сохранения: ' + error;
   }
   saveBtn.disabled = false;
 });
 
 const canvas = document.getElementById('orientation');
-const ctx = canvas.getContext('2d');
+const canvasContext = canvas.getContext('2d');
 
-function drawCube(roll, pitch) {
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  ctx.save();
-  ctx.translate(w/2, h/2);
-  ctx.rotate(roll * Math.PI / 180);
-  ctx.transform(1, 0, Math.tan(pitch * Math.PI / 180) * 0.5, 1, 0, 0);
-  ctx.fillStyle = '#1d4ed8';
-  ctx.strokeStyle = '#93c5fd';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.rect(-120, -80, 240, 160);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
+function drawCube(rollDegrees, pitchDegrees) {
+  const canvasWidthPixels = canvas.width;
+  const canvasHeightPixels = canvas.height;
+  canvasContext.clearRect(0, 0, canvasWidthPixels, canvasHeightPixels);
+  canvasContext.save();
+  canvasContext.translate(canvasWidthPixels/2, canvasHeightPixels/2);
+  canvasContext.rotate(rollDegrees * Math.PI / 180);
+  canvasContext.transform(1, 0, Math.tan(pitchDegrees * Math.PI / 180) * 0.5, 1, 0, 0);
+  canvasContext.fillStyle = '#1d4ed8';
+  canvasContext.strokeStyle = '#93c5fd';
+  canvasContext.lineWidth = 3;
+  canvasContext.beginPath();
+  canvasContext.rect(-120, -80, 240, 160);
+  canvasContext.fill();
+  canvasContext.stroke();
+  canvasContext.restore();
 }
 
 async function poll() {
   try {
-    const res = await fetch('/imu');
-    const j = await res.json();
-    document.getElementById('angles').textContent = `Roll: ${j.roll.toFixed(1)}° | Pitch: ${j.pitch.toFixed(1)}° | ax=${j.ax.toFixed(2)}g ay=${j.ay.toFixed(2)}g az=${j.az.toFixed(2)}g`;
-    drawCube(j.roll, j.pitch);
-  } catch (e) {
+    const response = await fetch('/imu');
+    const imuTelemetry = await response.json();
+    document.getElementById('angles').textContent = `Roll: ${imuTelemetry.rollDegrees.toFixed(1)}° | Pitch: ${imuTelemetry.pitchDegrees.toFixed(1)}° | ax=${imuTelemetry.accelerationXG.toFixed(2)}g ay=${imuTelemetry.accelerationYG.toFixed(2)}g az=${imuTelemetry.accelerationZG.toFixed(2)}g`;
+    drawCube(imuTelemetry.rollDegrees, imuTelemetry.pitchDegrees);
+  } catch (error) {
     statusBox.textContent = 'Потеря связи, пробую снова...';
   }
 }
@@ -123,64 +127,89 @@ poll();
 </html>
 )rawliteral";
 
+// Строим HTML страницу с подстановкой текущих значений
+// Build the HTML page while injecting current parameter values
 static String buildPage() {
   String page = FPSTR(INDEX_HTML);
-  page.replace("%OFFSET%", String(offset, 2));
-  page.replace("%SHARE%", String(share, 2));
-  page.replace("%KFRONT%", String(kFront, 2));
-  page.replace("%CFRONT%", String(cFront, 2));
-  page.replace("%KREAR%", String(kRear, 2));
-  page.replace("%CREAR%", String(cRear, 2));
-  page.replace("%FRONTBAL%", String(frontBalance, 2));
-  page.replace("%REARBAL%", String(rearBalance, 2));
+  page.replace("%OFFSET%", String(suspensionOffsetDegrees, 2));
+  page.replace("%SHARE%", String(suspensionTravelShare, 2));
+  page.replace("%KFRONT%", String(frontSpringStiffness, 2));
+  page.replace("%CFRONT%", String(frontDampingCoefficient, 2));
+  page.replace("%KREAR%", String(rearSpringStiffness, 2));
+  page.replace("%CREAR%", String(rearDampingCoefficient, 2));
+  page.replace("%FRONTBAL%", String(frontBalanceFactor, 2));
+  page.replace("%REARBAL%", String(rearBalanceFactor, 2));
   return page;
 }
 
+// Обработчик главной страницы / Root page handler
 static void handleRoot() {
-  server.send(200, "text/html", buildPage());
+  configurationWebServer.send(200, "text/html", buildPage());
 }
 
+// Приём и сохранение новых настроек из формы
+// Receive and persist new settings from the form
 static void handleSave() {
-  if (server.hasArg("offset")) offset = server.arg("offset").toFloat();
-  if (server.hasArg("share")) share = constrain(server.arg("share").toFloat(), 0.01f, 1.0f);
-  if (server.hasArg("kFront")) kFront = server.arg("kFront").toFloat();
-  if (server.hasArg("cFront")) cFront = server.arg("cFront").toFloat();
-  if (server.hasArg("kRear"))  kRear  = server.arg("kRear").toFloat();
-  if (server.hasArg("cRear"))  cRear  = server.arg("cRear").toFloat();
-  if (server.hasArg("frontBalance")) frontBalance = server.arg("frontBalance").toFloat();
-  if (server.hasArg("rearBalance"))  rearBalance  = server.arg("rearBalance").toFloat();
+  if (configurationWebServer.hasArg("suspensionOffsetDegrees")) {
+    suspensionOffsetDegrees = configurationWebServer.arg("suspensionOffsetDegrees").toFloat();
+  }
+  if (configurationWebServer.hasArg("suspensionTravelShare")) {
+    suspensionTravelShare = constrain(configurationWebServer.arg("suspensionTravelShare").toFloat(), 0.01f, 1.0f);
+  }
+  if (configurationWebServer.hasArg("frontSpringStiffness")) {
+    frontSpringStiffness = configurationWebServer.arg("frontSpringStiffness").toFloat();
+  }
+  if (configurationWebServer.hasArg("frontDampingCoefficient")) {
+    frontDampingCoefficient = configurationWebServer.arg("frontDampingCoefficient").toFloat();
+  }
+  if (configurationWebServer.hasArg("rearSpringStiffness"))  {
+    rearSpringStiffness  = configurationWebServer.arg("rearSpringStiffness").toFloat();
+  }
+  if (configurationWebServer.hasArg("rearDampingCoefficient"))  {
+    rearDampingCoefficient  = configurationWebServer.arg("rearDampingCoefficient").toFloat();
+  }
+  if (configurationWebServer.hasArg("frontBalance")) {
+    frontBalanceFactor = configurationWebServer.arg("frontBalance").toFloat();
+  }
+  if (configurationWebServer.hasArg("rearBalance"))  {
+    rearBalanceFactor  = configurationWebServer.arg("rearBalance").toFloat();
+  }
 
   updateSuspensionRange();
   saveConfig();
-  server.send(200, "text/plain", "Параметры сохранены");
+  configurationWebServer.send(200, "text/plain", "Параметры сохранены");
 }
 
 static void handleImu() {
   String json = "{";
-  json += "\"roll\":" + String(currentRoll, 3) + ",";
-  json += "\"pitch\":" + String(currentPitch, 3) + ",";
-  json += "\"ax\":" + String(accX, 3) + ",";
-  json += "\"ay\":" + String(accY, 3) + ",";
-  json += "\"az\":" + String(accZ, 3);
+  json += "\"rollDegrees\":" + String(currentRollDegrees, 3) + ",";
+  json += "\"pitchDegrees\":" + String(currentPitchDegrees, 3) + ",";
+  json += "\"accelerationXG\":" + String(accelerationXG, 3) + ",";
+  json += "\"accelerationYG\":" + String(accelerationYG, 3) + ",";
+  json += "\"accelerationZG\":" + String(accelerationZG, 3);
   json += "}";
-  server.send(200, "application/json", json);
+  configurationWebServer.send(200, "application/json", json);
 }
 
 static void setupWifi() {
+  // Поднимаем точку доступа для локального доступа
+  // Start access point for local configuration access
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(apSsid, apPass);
+  WiFi.softAP(accessPointSsid, accessPointPassword);
   IPAddress ip = WiFi.softAPIP();
   Serial.print("WiFi AP: ");
-  Serial.print(apSsid);
+  Serial.print(accessPointSsid);
   Serial.print(" | IP: ");
   Serial.println(ip);
 }
 
 static void setupServer() {
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/save", HTTP_POST, handleSave);
-  server.on("/imu", HTTP_GET, handleImu);
-  server.begin();
+  // Регистрируем маршруты веб-сервера
+  // Register web server routes
+  configurationWebServer.on("/", HTTP_GET, handleRoot);
+  configurationWebServer.on("/save", HTTP_POST, handleSave);
+  configurationWebServer.on("/imu", HTTP_GET, handleImu);
+  configurationWebServer.begin();
 }
 
 void startWeb() {
@@ -189,5 +218,5 @@ void startWeb() {
 }
 
 void handleWeb() {
-  server.handleClient();
+  configurationWebServer.handleClient();
 }
