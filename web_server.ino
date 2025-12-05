@@ -189,6 +189,15 @@ langButtons.forEach((btn) => {
 
 setLanguage(currentLanguage);
 
+function applyConfigValues(values) {
+  Object.entries(values).forEach(([id, value]) => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.value = value;
+    }
+  });
+}
+
 document.getElementById('configForm').addEventListener('submit', async (formSubmitEvent) => {
   formSubmitEvent.preventDefault();
   saveBtn.disabled = true;
@@ -217,12 +226,7 @@ resetBtn.addEventListener('click', async () => {
       throw new Error(await response.text());
     }
     const defaultValues = await response.json();
-    Object.entries(defaultValues).forEach(([id, value]) => {
-      const input = document.getElementById(id);
-      if (input) {
-        input.value = value;
-      }
-    });
+    applyConfigValues(defaultValues);
     statusBox.textContent = translations[currentLanguage].status.resetDone;
   } catch (error) {
     statusBox.textContent = translations[currentLanguage].status.errorPrefix + error;
@@ -348,8 +352,7 @@ static void handleSave() {
   configurationWebServer.send(200, "text/plain", "ok");
 }
 
-static void handleReset() {
-  resetConfigToDefaults();
+static String buildConfigJson() {
   String json = "{";
   json += "\"suspensionOffsetDegrees\":" + String(suspensionOffsetDegrees, 2) + ",";
   json += "\"suspensionTravelShare\":" + String(suspensionTravelShare, 2) + ",";
@@ -364,7 +367,12 @@ static void handleReset() {
   json += "\"dynamicHeaveInfluence\":" + String(dynamicHeaveInfluence, 2) + ",";
   json += "\"accelerationFilterAlpha\":" + String(accelerationFilterAlpha, 2);
   json += "}";
-  configurationWebServer.send(200, "application/json", json);
+  return json;
+}
+
+static void handleReset() {
+  resetConfigToDefaults();
+  configurationWebServer.send(200, "application/json", buildConfigJson());
 }
 
 static void handleImu() {
