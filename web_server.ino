@@ -31,49 +31,61 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     #status { min-height:22px; }
     #angles { font-weight:700; }
     canvas { width:100%; max-width:420px; background:#0b1220; border:1px solid #1f2937; border-radius:12px; }
+    .actions { display:flex; gap:12px; flex-wrap:wrap; }
+    .secondary { background:#0ea5e9; color:#0b1726; }
+    .lang-switch { display:flex; gap:8px; margin-bottom:12px; }
+    .lang-switch button { background:#1e293b; color:#e2e8f0; border:1px solid #334155; }
+    .lang-switch button.active { background:#22c55e; color:#0b1726; border-color:#22c55e; }
   </style>
 </head>
 <body>
-  <h1>ESP32 Подвеска</h1>
+  <div class="lang-switch">
+    <button type="button" data-lang="ru" class="active">Русский</button>
+    <button type="button" data-lang="en">English</button>
+  </div>
+  <h1 id="pageTitle">ESP32 Подвеска</h1>
   <div class="card">
     <form id="configForm">
-      <label>Базовая высота <small>(offset, °)</small>
+      <label id="labelOffset">Базовая высота <small>(offset, °)</small>
         <input step="0.1" type="number" id="suspensionOffsetDegrees" name="suspensionOffsetDegrees" value="%OFFSET%" required>
       </label>
-      <label>Доля хода сервы под подвеску <small>(share 0..1)</small>
+      <label id="labelShare">Доля хода сервы под подвеску <small>(share 0..1)</small>
         <input step="0.01" min="0.01" max="1" type="number" id="suspensionTravelShare" name="suspensionTravelShare" value="%SHARE%" required>
       </label>
-      <label>Жёсткость перед (kFront)
+      <label id="labelKFront">Жёсткость перед (kFront)
         <input step="0.1" type="number" id="frontSpringStiffness" name="frontSpringStiffness" value="%KFRONT%" required>
       </label>
-      <label>Демпфирование перед (cFront)
+      <label id="labelCFront">Демпфирование перед (cFront)
         <input step="0.1" type="number" id="frontDampingCoefficient" name="frontDampingCoefficient" value="%CFRONT%" required>
       </label>
-      <label>Жёсткость зад (kRear)
+      <label id="labelKRear">Жёсткость зад (kRear)
         <input step="0.1" type="number" id="rearSpringStiffness" name="rearSpringStiffness" value="%KREAR%" required>
       </label>
-      <label>Демпфирование зад (cRear)
+      <label id="labelCRear">Демпфирование зад (cRear)
         <input step="0.1" type="number" id="rearDampingCoefficient" name="rearDampingCoefficient" value="%CREAR%" required>
       </label>
-      <label>Баланс перед (frontBalance 0..1)
+      <label id="labelFrontBalance">Баланс перед (frontBalance 0..1)
         <input step="0.1" min="0" max="1.5" type="number" id="frontBalance" name="frontBalance" value="%FRONTBAL%" required>
       </label>
-      <label>Баланс зад (rearBalance 0..1)
+      <label id="labelRearBalance">Баланс зад (rearBalance 0..1)
         <input step="0.1" min="0" max="1.5" type="number" id="rearBalance" name="rearBalance" value="%REARBAL%" required>
       </label>
-      <label>Динамика тангажа (kDynPitch)
+      <label id="labelDynPitch">Динамика тангажа (kDynPitch)
         <input step="0.05" type="number" id="dynamicPitchInfluence" name="dynamicPitchInfluence" value="%KDYN_PITCH%" required>
       </label>
-      <label>Динамика крена (kDynRoll)
+      <label id="labelDynRoll">Динамика крена (kDynRoll)
         <input step="0.05" type="number" id="dynamicRollInfluence" name="dynamicRollInfluence" value="%KDYN_ROLL%" required>
       </label>
-      <label>Вертикальная динамика (kDynHeave)
+      <label id="labelDynHeave">Вертикальная динамика (kDynHeave)
         <input step="0.05" type="number" id="dynamicHeaveInfluence" name="dynamicHeaveInfluence" value="%KDYN_HEAVE%" required>
       </label>
-      <label>Сглаживание ускорений (alpha 0..1)
+      <label id="labelAccAlpha">Сглаживание ускорений (alpha 0..1)
         <input step="0.01" min="0" max="1" type="number" id="accelerationFilterAlpha" name="accelerationFilterAlpha" value="%ACC_ALPHA%" required>
       </label>
-      <button type="submit" id="saveBtn">Сохранить</button>
+      <div class="actions">
+        <button type="submit" id="saveBtn">Сохранить</button>
+        <button type="button" id="resetBtn" class="secondary">Сбросить в дефолт</button>
+      </div>
       <div id="status"></div>
     </form>
   </div>
@@ -84,19 +96,138 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <script>
 const statusBox = document.getElementById('status');
 const saveBtn = document.getElementById('saveBtn');
+const resetBtn = document.getElementById('resetBtn');
+const langButtons = document.querySelectorAll('.lang-switch button');
+const pageTitle = document.getElementById('pageTitle');
+
+const translations = {
+  ru: {
+    title: 'ESP32 Подвеска',
+    labels: {
+      offset: 'Базовая высота <small>(offset, °)</small>',
+      share: 'Доля хода сервы под подвеску <small>(share 0..1)</small>',
+      kFront: 'Жёсткость перед (kFront)',
+      cFront: 'Демпфирование перед (cFront)',
+      kRear: 'Жёсткость зад (kRear)',
+      cRear: 'Демпфирование зад (cRear)',
+      frontBalance: 'Баланс перед (frontBalance 0..1)',
+      rearBalance: 'Баланс зад (rearBalance 0..1)',
+      dynPitch: 'Динамика тангажа (kDynPitch)',
+      dynRoll: 'Динамика крена (kDynRoll)',
+      dynHeave: 'Вертикальная динамика (kDynHeave)',
+      accAlpha: 'Сглаживание ускорений (alpha 0..1)'
+    },
+    buttons: { save: 'Сохранить', reset: 'Сбросить в дефолт' },
+    status: {
+      saving: 'Сохраняю...',
+      saved: 'Параметры сохранены',
+      reset: 'Возвращаю к базовым значениям...',
+      resetDone: 'Дефолтные значения применены',
+      errorPrefix: 'Ошибка сохранения: ',
+      lostConnection: 'Потеря связи, пробую снова...'
+    },
+    angles: (roll, pitch, ax, ay, az) => `Roll: ${roll}° | Pitch: ${pitch}° | ax=${ax}g ay=${ay}g az=${az}g`
+  },
+  en: {
+    title: 'ESP32 Suspension',
+    labels: {
+      offset: 'Base angle <small>(offset, °)</small>',
+      share: 'Servo travel share <small>(share 0..1)</small>',
+      kFront: 'Front stiffness (kFront)',
+      cFront: 'Front damping (cFront)',
+      kRear: 'Rear stiffness (kRear)',
+      cRear: 'Rear damping (cRear)',
+      frontBalance: 'Front balance (frontBalance 0..1)',
+      rearBalance: 'Rear balance (rearBalance 0..1)',
+      dynPitch: 'Pitch dynamics (kDynPitch)',
+      dynRoll: 'Roll dynamics (kDynRoll)',
+      dynHeave: 'Heave dynamics (kDynHeave)',
+      accAlpha: 'Acceleration smoothing (alpha 0..1)'
+    },
+    buttons: { save: 'Save', reset: 'Reset to defaults' },
+    status: {
+      saving: 'Saving...',
+      saved: 'Settings saved',
+      reset: 'Restoring defaults...',
+      resetDone: 'Default values applied',
+      errorPrefix: 'Save error: ',
+      lostConnection: 'Connection lost, retrying...'
+    },
+    angles: (roll, pitch, ax, ay, az) => `Roll: ${roll}° | Pitch: ${pitch}° | ax=${ax}g ay=${ay}g az=${az}g`
+  }
+};
+
+let currentLanguage = 'ru';
+
+function setLanguage(lang) {
+  currentLanguage = lang;
+  document.documentElement.lang = lang;
+  const t = translations[lang];
+  pageTitle.textContent = t.title;
+  document.getElementById('labelOffset').innerHTML = t.labels.offset;
+  document.getElementById('labelShare').innerHTML = t.labels.share;
+  document.getElementById('labelKFront').innerHTML = t.labels.kFront;
+  document.getElementById('labelCFront').innerHTML = t.labels.cFront;
+  document.getElementById('labelKRear').innerHTML = t.labels.kRear;
+  document.getElementById('labelCRear').innerHTML = t.labels.cRear;
+  document.getElementById('labelFrontBalance').innerHTML = t.labels.frontBalance;
+  document.getElementById('labelRearBalance').innerHTML = t.labels.rearBalance;
+  document.getElementById('labelDynPitch').innerHTML = t.labels.dynPitch;
+  document.getElementById('labelDynRoll').innerHTML = t.labels.dynRoll;
+  document.getElementById('labelDynHeave').innerHTML = t.labels.dynHeave;
+  document.getElementById('labelAccAlpha').innerHTML = t.labels.accAlpha;
+  saveBtn.textContent = t.buttons.save;
+  resetBtn.textContent = t.buttons.reset;
+  langButtons.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.lang === lang);
+  });
+}
+
+langButtons.forEach((btn) => {
+  btn.addEventListener('click', () => setLanguage(btn.dataset.lang));
+});
+
+setLanguage(currentLanguage);
 
 document.getElementById('configForm').addEventListener('submit', async (formSubmitEvent) => {
   formSubmitEvent.preventDefault();
   saveBtn.disabled = true;
-  statusBox.textContent = 'Сохраняю...';
+  statusBox.textContent = translations[currentLanguage].status.saving;
   try {
     const formData = new FormData(formSubmitEvent.target);
     const requestBody = new URLSearchParams(formData);
     const response = await fetch('/save', { method: 'POST', body: requestBody });
-    statusBox.textContent = await response.text();
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    statusBox.textContent = translations[currentLanguage].status.saved;
   } catch (error) {
-    statusBox.textContent = 'Ошибка сохранения: ' + error;
+    statusBox.textContent = translations[currentLanguage].status.errorPrefix + error;
   }
+  saveBtn.disabled = false;
+});
+
+resetBtn.addEventListener('click', async () => {
+  resetBtn.disabled = true;
+  saveBtn.disabled = true;
+  statusBox.textContent = translations[currentLanguage].status.reset;
+  try {
+    const response = await fetch('/reset', { method: 'POST' });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const defaultValues = await response.json();
+    Object.entries(defaultValues).forEach(([id, value]) => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.value = value;
+      }
+    });
+    statusBox.textContent = translations[currentLanguage].status.resetDone;
+  } catch (error) {
+    statusBox.textContent = translations[currentLanguage].status.errorPrefix + error;
+  }
+  resetBtn.disabled = false;
   saveBtn.disabled = false;
 });
 
@@ -125,10 +256,16 @@ async function poll() {
   try {
     const response = await fetch('/imu');
     const imuTelemetry = await response.json();
-    document.getElementById('angles').textContent = `Roll: ${imuTelemetry.rollDegrees.toFixed(1)}° | Pitch: ${imuTelemetry.pitchDegrees.toFixed(1)}° | ax=${imuTelemetry.accelerationXG.toFixed(2)}g ay=${imuTelemetry.accelerationYG.toFixed(2)}g az=${imuTelemetry.accelerationZG.toFixed(2)}g`;
+    document.getElementById('angles').textContent = translations[currentLanguage].angles(
+      imuTelemetry.rollDegrees.toFixed(1),
+      imuTelemetry.pitchDegrees.toFixed(1),
+      imuTelemetry.accelerationXG.toFixed(2),
+      imuTelemetry.accelerationYG.toFixed(2),
+      imuTelemetry.accelerationZG.toFixed(2)
+    );
     drawCube(imuTelemetry.rollDegrees, imuTelemetry.pitchDegrees);
   } catch (error) {
-    statusBox.textContent = 'Потеря связи, пробую снова...';
+    statusBox.textContent = translations[currentLanguage].status.lostConnection;
   }
 }
 
@@ -205,7 +342,26 @@ static void handleSave() {
 
   updateSuspensionRange();
   saveConfig();
-  configurationWebServer.send(200, "text/plain", "Параметры сохранены");
+  configurationWebServer.send(200, "text/plain", "ok");
+}
+
+static void handleReset() {
+  resetConfigToDefaults();
+  String json = "{";
+  json += "\"suspensionOffsetDegrees\":" + String(suspensionOffsetDegrees, 2) + ",";
+  json += "\"suspensionTravelShare\":" + String(suspensionTravelShare, 2) + ",";
+  json += "\"frontSpringStiffness\":" + String(frontSpringStiffness, 2) + ",";
+  json += "\"frontDampingCoefficient\":" + String(frontDampingCoefficient, 2) + ",";
+  json += "\"rearSpringStiffness\":" + String(rearSpringStiffness, 2) + ",";
+  json += "\"rearDampingCoefficient\":" + String(rearDampingCoefficient, 2) + ",";
+  json += "\"frontBalance\":" + String(frontBalanceFactor, 2) + ",";
+  json += "\"rearBalance\":" + String(rearBalanceFactor, 2) + ",";
+  json += "\"dynamicPitchInfluence\":" + String(dynamicPitchInfluence, 2) + ",";
+  json += "\"dynamicRollInfluence\":" + String(dynamicRollInfluence, 2) + ",";
+  json += "\"dynamicHeaveInfluence\":" + String(dynamicHeaveInfluence, 2) + ",";
+  json += "\"accelerationFilterAlpha\":" + String(accelerationFilterAlpha, 2);
+  json += "}";
+  configurationWebServer.send(200, "application/json", json);
 }
 
 static void handleImu() {
@@ -236,6 +392,7 @@ static void setupServer() {
   // Register web server routes
   configurationWebServer.on("/", HTTP_GET, handleRoot);
   configurationWebServer.on("/save", HTTP_POST, handleSave);
+  configurationWebServer.on("/reset", HTTP_POST, handleReset);
   configurationWebServer.on("/imu", HTTP_GET, handleImu);
   configurationWebServer.begin();
 }
