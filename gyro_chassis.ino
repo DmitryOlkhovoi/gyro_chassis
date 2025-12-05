@@ -13,6 +13,11 @@ Servo servoFrontRight; // Front Right servo (правый передний пр�
 Servo servoRearLeft;   // Rear Left servo (левый задний привод)
 Servo servoRearRight;  // Rear Right servo (правый задний привод)
 
+// Фильтры для ускорений / Acceleration smoothing filters
+float filteredLongitudinalG = 0.0f;
+float filteredLateralG      = 0.0f;
+float filteredVerticalG     = 0.0f;
+
 // Servo state that models the suspension with a simple spring-damper model
 // Состояние сервы, имитирующее подвеску через простую модель пружины и демпфера
 struct SpringServo {
@@ -121,39 +126,30 @@ void loop() {
   float normalizedRoll  = constrain(limitedRollDegrees  / 30.0f, -1.0f, 1.0f);
   float normalizedPitch = constrain(limitedPitchDegrees / 30.0f, -1.0f, 1.0f);
 
-  // Фильтруем шум малых ускорений / Filter noise from small accelerations
-  float longitudinalAccelerationG = accelerationXG;
-  if (fabs(longitudinalAccelerationG) < 0.05f) longitudinalAccelerationG = 0.0f;
-  float normalizedLongitudinalAcceleration = constrain(longitudinalAccelerationG / 0.5f, -1.0f, 1.0f);
+  // Динамика по ускорениям с экспоненциальным сглаживанием / Dynamic response using filtered accelerations
+  float longitudinalAccelerationG = constrain(accelerationXG, -1.5f, 1.5f);
+  float lateralAccelerationG      = constrain(accelerationYG, -1.5f, 1.5f);
+  float verticalAccelerationG     = constrain(accelerationZG - 1.0f, -1.5f, 1.5f);
 
-  float lateralAccelerationG = accelerationYG;
-  if (fabs(lateralAccelerationG) < 0.05f) lateralAccelerationG = 0.0f;
-  float normalizedLateralAcceleration = constrain(lateralAccelerationG / 0.5f, -1.0f, 1.0f);
+  float filterAlpha = constrain(accelerationFilterAlpha, 0.0f, 1.0f);
+  filteredLongitudinalG = filteredLongitudinalG * (1.0f - filterAlpha) + longitudinalAccelerationG * filterAlpha;
+  filteredLateralG      = filteredLateralG * (1.0f - filterAlpha) + lateralAccelerationG * filterAlpha;
+  filteredVerticalG     = filteredVerticalG * (1.0f - filterAlpha) + verticalAccelerationG * filterAlpha;
 
-  // Весовые коэффициенты смешивания наклона и ускорения / Weights for tilt vs acceleration blending
-  float weightPitchFromTilt  = 1.0f;
-  float weightPitchFromAccel = 0.7f;
-
-  float weightRollFromTilt   = 1.0f;
-  float weightRollFromAccel  = 0.7f;
-
-  // Формируем итоговый сигнал для каждой оси / Compose blended control signals
-  float blendedPitch = normalizedPitch * weightPitchFromTilt + normalizedLongitudinalAcceleration * weightPitchFromAccel;
-  float blendedRoll  = normalizedRoll  * weightRollFromTilt  + normalizedLateralAcceleration  * weightRollFromAccel;
-
-  blendedPitch = constrain(blendedPitch, -1.0f, 1.0f);
-  blendedRoll  = constrain(blendedRoll,  -1.0f, 1.0f);
+  float dynamicPitch = filteredLongitudinalG * dynamicPitchInfluence;
+  float dynamicRoll  = filteredLateralG * dynamicRollInfluence;
+  float dynamicHeave = filteredVerticalG * dynamicHeaveInfluence;
 
   // Разносим сигнал по осям шасси / Map blended signals to chassis axes
-  float frontPitchComponent = blendedPitch * frontBalanceFactor;
-  float rearPitchComponent  = blendedPitch * rearBalanceFactor;
-  float rollSideComponent   = blendedRoll;
+  float frontPitchComponent = normalizedPitch * frontBalanceFactor;
+  float rearPitchComponent  = normalizedPitch * rearBalanceFactor;
+  float rollSideComponent   = normalizedRoll;
 
   // Микшируем команды для каждой сервы / Mix servo commands per corner
-  float servoMixFrontLeft  = constrain(frontPitchComponent - rollSideComponent, -1.0f, 1.0f);
-  float servoMixFrontRight = constrain(frontPitchComponent + rollSideComponent, -1.0f, 1.0f);
-  float servoMixRearLeft   = constrain(-rearPitchComponent - rollSideComponent, -1.0f, 1.0f);
-  float servoMixRearRight  = constrain(-rearPitchComponent + rollSideComponent, -1.0f, 1.0f);
+  float servoMixFrontLeft  = constrain(frontPitchComponent + dynamicHeave - rollSideComponent + dynamicPitch, -1.0f, 1.0f);
+  float servoMixFrontRight = constrain(frontPitchComponent + dynamicHeave + rollSideComponent + dynamicPitch, -1.0f, 1.0f);
+  float servoMixRearLeft   = constrain(-rearPitchComponent + dynamicHeave - rollSideComponent - dynamicPitch, -1.0f, 1.0f);
+  float servoMixRearRight  = constrain(-rearPitchComponent + dynamicHeave + rollSideComponent - dynamicPitch, -1.0f, 1.0f);
 
   // Целевые углы с учётом базового офсета и допустимого хода / Target angles with base offset and travel limits
   float targetFrontLeftDegrees  = suspensionOffsetDegrees + servoMixFrontLeft  * suspensionHalfRangeDegrees;

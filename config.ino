@@ -19,6 +19,12 @@ float rearDampingCoefficient    = 1.2f;
 float frontBalanceFactor = 1.0f;
 float rearBalanceFactor  = 0.8f;
 
+// Динамические коэффициенты и фильтрация ускорений / Dynamic coefficients and acceleration filtering
+float dynamicPitchInfluence  = 0.5f; // kDynPitch
+float dynamicRollInfluence   = 0.5f; // kDynRoll
+float dynamicHeaveInfluence  = 0.3f; // kDynHeave
+float accelerationFilterAlpha = 0.1f;
+
 static Preferences prefs;
 
 void updateSuspensionRange() {
@@ -39,6 +45,10 @@ void loadConfig() {
   rearDampingCoefficient        = prefs.getFloat("cRear", rearDampingCoefficient);
   frontBalanceFactor = prefs.getFloat("frontBal", frontBalanceFactor);
   rearBalanceFactor  = prefs.getFloat("rearBal", rearBalanceFactor);
+  dynamicPitchInfluence  = prefs.getFloat("dynPitch", dynamicPitchInfluence);
+  dynamicRollInfluence   = prefs.getFloat("dynRoll", dynamicRollInfluence);
+  dynamicHeaveInfluence  = prefs.getFloat("dynHeave", dynamicHeaveInfluence);
+  accelerationFilterAlpha = prefs.getFloat("accAlpha", accelerationFilterAlpha);
   prefs.end();
   updateSuspensionRange();
 }
@@ -54,5 +64,9 @@ void saveConfig() {
   prefs.putFloat("cRear", rearDampingCoefficient);
   prefs.putFloat("frontBal", frontBalanceFactor);
   prefs.putFloat("rearBal", rearBalanceFactor);
+  prefs.putFloat("dynPitch", dynamicPitchInfluence);
+  prefs.putFloat("dynRoll", dynamicRollInfluence);
+  prefs.putFloat("dynHeave", dynamicHeaveInfluence);
+  prefs.putFloat("accAlpha", accelerationFilterAlpha);
   prefs.end();
 }
