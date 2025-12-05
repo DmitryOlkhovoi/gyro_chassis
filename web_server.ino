@@ -24,7 +24,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     h1 { margin-top:0; }
     form { display:grid; gap:12px; max-width:420px; }
     label { display:flex; flex-direction:column; gap:6px; font-weight:600; }
-    input { padding:10px; border-radius:8px; border:1px solid #1e293b; background:#1f2937; color:#e2e8f0; }
+    input {
+      padding:10px;
+      border-radius:8px;
+      border:1px solid #334155;
+      background:#0b1220;
+      color:#e2e8f0;
+      box-shadow:0 0 0 1px #1f2937 inset;
+    }
+    input:focus { outline:2px solid #22c55e; outline-offset:1px; }
     button { padding:12px; border:none; border-radius:10px; background:#22c55e; color:#0b1726; font-weight:700; cursor:pointer; }
     button:disabled { opacity:0.6; cursor:not-allowed; }
     .card { background:#111827; border:1px solid #1f2937; border-radius:14px; padding:16px; margin-bottom:18px; box-shadow:0 10px 30px rgba(0,0,0,0.35); }
@@ -188,6 +196,23 @@ langButtons.forEach((btn) => {
 });
 
 setLanguage(currentLanguage);
+
+// Загружаем сохранённые значения при открытии страницы, чтобы поля не оставались пустыми
+// Load persisted values when the page opens so inputs never stay empty
+async function fetchConfig() {
+  try {
+    const response = await fetch('/config');
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const config = await response.json();
+    applyConfigValues(config);
+  } catch (error) {
+    statusBox.textContent = translations[currentLanguage].status.errorPrefix + error;
+  }
+}
+
+fetchConfig();
 
 function applyConfigValues(values) {
   Object.entries(values).forEach(([id, value]) => {
@@ -375,6 +400,10 @@ static void handleReset() {
   configurationWebServer.send(200, "application/json", buildConfigJson());
 }
 
+static void handleConfig() {
+  configurationWebServer.send(200, "application/json", buildConfigJson());
+}
+
 static void handleImu() {
   String json = "{";
   json += "\"rollDegrees\":" + String(currentRollDegrees, 3) + ",";
@@ -407,6 +436,7 @@ static void setupServer() {
   configurationWebServer.on("/", HTTP_GET, handleRoot);
   configurationWebServer.on("/save", HTTP_POST, handleSave);
   configurationWebServer.on("/reset", HTTP_POST, handleReset);
+  configurationWebServer.on("/config", HTTP_GET, handleConfig);
   configurationWebServer.on("/imu", HTTP_GET, handleImu);
   configurationWebServer.begin();
 }
