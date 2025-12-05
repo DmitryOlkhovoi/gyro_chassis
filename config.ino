@@ -1,50 +1,58 @@
 #include <Preferences.h>
 #include "config.h"
 
-float offset      = 90.0f;
-float share       = 0.25f;
-const float totalRange  = 180.0f;
-float suspRange   = totalRange * share;
-float suspHalf    = suspRange / 2.0f;
+// Базовые параметры подвески с подробными именами для наглядности
+// Base suspension parameters with explicit names for clarity
+float suspensionOffsetDegrees       = 90.0f;   // Центральный угол / Center angle
+float suspensionTravelShare         = 0.25f;   // Доля хода для подвески / Share of servo travel used for suspension
+const float totalServoRangeDegrees  = 180.0f;  // Полный ход сервы / Full servo range
+float suspensionRangeDegrees        = totalServoRangeDegrees * suspensionTravelShare;
+float suspensionHalfRangeDegrees    = suspensionRangeDegrees / 2.0f;
 
-float kFront = 5.0f;
-float cFront = 1.5f;
-float kRear  = 3.0f;
-float cRear  = 1.2f;
+// Коэффициенты для модели пружина-демпфер / Spring-damper model coefficients
+float frontSpringStiffness      = 5.0f;
+float frontDampingCoefficient   = 1.5f;
+float rearSpringStiffness       = 3.0f;
+float rearDampingCoefficient    = 1.2f;
 
-float frontBalance = 1.0f;
-float rearBalance  = 0.8f;
+// Баланс сил по осям / Balance factors for front vs rear influence
+float frontBalanceFactor = 1.0f;
+float rearBalanceFactor  = 0.8f;
 
 static Preferences prefs;
 
 void updateSuspensionRange() {
-  suspRange = totalRange * share;
-  suspHalf  = suspRange / 2.0f;
+  // Пересчитываем рабочий диапазон после изменения доли хода
+  // Recalculate working range after travel share changes
+  suspensionRangeDegrees     = totalServoRangeDegrees * suspensionTravelShare;
+  suspensionHalfRangeDegrees = suspensionRangeDegrees / 2.0f;
 }
 
 void loadConfig() {
+  // Читаем сохранённые значения, если они есть / Load persisted values when available
   prefs.begin("susp", false);
-  offset       = prefs.getFloat("offset", offset);
-  share        = prefs.getFloat("share", share);
-  kFront       = prefs.getFloat("kFront", kFront);
-  cFront       = prefs.getFloat("cFront", cFront);
-  kRear        = prefs.getFloat("kRear", kRear);
-  cRear        = prefs.getFloat("cRear", cRear);
-  frontBalance = prefs.getFloat("frontBal", frontBalance);
-  rearBalance  = prefs.getFloat("rearBal", rearBalance);
+  suspensionOffsetDegrees       = prefs.getFloat("offset", suspensionOffsetDegrees);
+  suspensionTravelShare        = prefs.getFloat("share", suspensionTravelShare);
+  frontSpringStiffness       = prefs.getFloat("kFront", frontSpringStiffness);
+  frontDampingCoefficient       = prefs.getFloat("cFront", frontDampingCoefficient);
+  rearSpringStiffness        = prefs.getFloat("kRear", rearSpringStiffness);
+  rearDampingCoefficient        = prefs.getFloat("cRear", rearDampingCoefficient);
+  frontBalanceFactor = prefs.getFloat("frontBal", frontBalanceFactor);
+  rearBalanceFactor  = prefs.getFloat("rearBal", rearBalanceFactor);
   prefs.end();
   updateSuspensionRange();
 }
 
 void saveConfig() {
+  // Сохраняем актуальные настройки во flash / Persist current settings to flash
   prefs.begin("susp", false);
-  prefs.putFloat("offset", offset);
-  prefs.putFloat("share", share);
-  prefs.putFloat("kFront", kFront);
-  prefs.putFloat("cFront", cFront);
-  prefs.putFloat("kRear", kRear);
-  prefs.putFloat("cRear", cRear);
-  prefs.putFloat("frontBal", frontBalance);
-  prefs.putFloat("rearBal", rearBalance);
+  prefs.putFloat("offset", suspensionOffsetDegrees);
+  prefs.putFloat("share", suspensionTravelShare);
+  prefs.putFloat("kFront", frontSpringStiffness);
+  prefs.putFloat("cFront", frontDampingCoefficient);
+  prefs.putFloat("kRear", rearSpringStiffness);
+  prefs.putFloat("cRear", rearDampingCoefficient);
+  prefs.putFloat("frontBal", frontBalanceFactor);
+  prefs.putFloat("rearBal", rearBalanceFactor);
   prefs.end();
 }
