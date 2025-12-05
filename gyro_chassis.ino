@@ -48,10 +48,10 @@ void setup() {
   Wire.begin(21, 22);
   mpu.initialize();
 
-  servoFL.attach(13);
-  servoFR.attach(14);
-  servoRL.attach(15);
-  servoRR.attach(16);
+  servoFL.attach(33);
+  servoFR.attach(32);
+  servoRL.attach(27);
+  servoRR.attach(26);
 
   sFL.x = sFR.x = sRL.x = sRR.x = offset;
   sFL.v = sFR.v = sRL.v = sRR.v = 0.0f;
