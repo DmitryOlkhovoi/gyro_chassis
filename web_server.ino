@@ -189,6 +189,23 @@ langButtons.forEach((btn) => {
 
 setLanguage(currentLanguage);
 
+// Загружаем сохранённые значения при открытии страницы, чтобы поля не оставались пустыми
+// Load persisted values when the page opens so inputs never stay empty
+async function fetchConfig() {
+  try {
+    const response = await fetch('/config');
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const config = await response.json();
+    applyConfigValues(config);
+  } catch (error) {
+    statusBox.textContent = translations[currentLanguage].status.errorPrefix + error;
+  }
+}
+
+fetchConfig();
+
 function applyConfigValues(values) {
   Object.entries(values).forEach(([id, value]) => {
     const input = document.getElementById(id);
@@ -375,6 +392,10 @@ static void handleReset() {
   configurationWebServer.send(200, "application/json", buildConfigJson());
 }
 
+static void handleConfig() {
+  configurationWebServer.send(200, "application/json", buildConfigJson());
+}
+
 static void handleImu() {
   String json = "{";
   json += "\"rollDegrees\":" + String(currentRollDegrees, 3) + ",";
@@ -407,6 +428,7 @@ static void setupServer() {
   configurationWebServer.on("/", HTTP_GET, handleRoot);
   configurationWebServer.on("/save", HTTP_POST, handleSave);
   configurationWebServer.on("/reset", HTTP_POST, handleReset);
+  configurationWebServer.on("/config", HTTP_GET, handleConfig);
   configurationWebServer.on("/imu", HTTP_GET, handleImu);
   configurationWebServer.begin();
 }
