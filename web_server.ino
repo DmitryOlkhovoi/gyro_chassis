@@ -126,7 +126,7 @@ const translations = {
       errorPrefix: 'Ошибка сохранения: ',
       lostConnection: 'Потеря связи, пробую снова...'
     },
-    angles: (roll, pitch, ax, ay, az) => `Roll: ${roll}° | Pitch: ${pitch}° | ax=${ax}g ay=${ay}g az=${az}g`
+    angles: (roll, pitch, gx, gy, gz, ax, ay, az) => `Roll: ${roll}° | Pitch: ${pitch}° | gyro: x=${gx}°/s y=${gy}°/s z=${gz}°/s | ax=${ax}g ay=${ay}g az=${az}g`
   },
   en: {
     title: 'ESP32 Suspension',
@@ -153,7 +153,7 @@ const translations = {
       errorPrefix: 'Save error: ',
       lostConnection: 'Connection lost, retrying...'
     },
-    angles: (roll, pitch, ax, ay, az) => `Roll: ${roll}° | Pitch: ${pitch}° | ax=${ax}g ay=${ay}g az=${az}g`
+    angles: (roll, pitch, gx, gy, gz, ax, ay, az) => `Roll: ${roll}° | Pitch: ${pitch}° | gyro: x=${gx}°/s y=${gy}°/s z=${gz}°/s | ax=${ax}g ay=${ay}g az=${az}g`
   }
 };
 
@@ -259,6 +259,9 @@ async function poll() {
     document.getElementById('angles').textContent = translations[currentLanguage].angles(
       imuTelemetry.rollDegrees.toFixed(1),
       imuTelemetry.pitchDegrees.toFixed(1),
+      imuTelemetry.gyroXDegreesPerSecond.toFixed(1),
+      imuTelemetry.gyroYDegreesPerSecond.toFixed(1),
+      imuTelemetry.gyroZDegreesPerSecond.toFixed(1),
       imuTelemetry.accelerationXG.toFixed(2),
       imuTelemetry.accelerationYG.toFixed(2),
       imuTelemetry.accelerationZG.toFixed(2)
@@ -368,6 +371,9 @@ static void handleImu() {
   String json = "{";
   json += "\"rollDegrees\":" + String(currentRollDegrees, 3) + ",";
   json += "\"pitchDegrees\":" + String(currentPitchDegrees, 3) + ",";
+  json += "\"gyroXDegreesPerSecond\":" + String(gyroXDegreesPerSecond, 3) + ",";
+  json += "\"gyroYDegreesPerSecond\":" + String(gyroYDegreesPerSecond, 3) + ",";
+  json += "\"gyroZDegreesPerSecond\":" + String(gyroZDegreesPerSecond, 3) + ",";
   json += "\"accelerationXG\":" + String(accelerationXG, 3) + ",";
   json += "\"accelerationYG\":" + String(accelerationYG, 3) + ",";
   json += "\"accelerationZG\":" + String(accelerationZG, 3);

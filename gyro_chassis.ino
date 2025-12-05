@@ -18,6 +18,10 @@ float filteredLongitudinalG = 0.0f;
 float filteredLateralG      = 0.0f;
 float filteredVerticalG     = 0.0f;
 
+// Комплементарный фильтр для углов крена и тангажа
+float fusedRollDegrees  = 0.0f;
+float fusedPitchDegrees = 0.0f;
+
 // Servo state that models the suspension with a simple spring-damper model
 // Состояние сервы, имитирующее подвеску через простую модель пружины и демпфера
 struct SpringServo {
@@ -79,6 +83,15 @@ void setup() {
   Wire.begin(21, 22);
   mpuSensor.initialize();
 
+  // Одноразово читаем акселерометр и задаём стартовые углы для комплементарного фильтра
+  int16_t ax0, ay0, az0;
+  mpuSensor.getAcceleration(&ax0, &ay0, &az0);
+  float accX0 = ax0 / 16384.0f;
+  float accY0 = ay0 / 16384.0f;
+  float accZ0 = az0 / 16384.0f;
+  fusedRollDegrees  = atan2(accY0, accZ0) * 180.0f / PI;
+  fusedPitchDegrees = atan2(-accX0, sqrt(accY0 * accY0 + accZ0 * accZ0)) * 180.0f / PI;
+
   // Привязываем сервы к соответствующим выводам / Attach servos to pins
   servoFrontLeft.attach(33);
   servoFrontRight.attach(32);
@@ -103,21 +116,36 @@ void loop() {
   if (deltaTimeSeconds > 0.05) deltaTimeSeconds = 0.05f;  // Ограничиваем шаг интеграции / Cap integration step
   lastUpdateMilliseconds = currentMillis;
 
-  // Читаем ускорения по осям / Read raw acceleration along axes
-  int16_t rawAccelerationX, rawAccelerationY, rawAccelerationZ;
-  mpuSensor.getAcceleration(&rawAccelerationX, &rawAccelerationY, &rawAccelerationZ);
+  // Читаем ускорения и гироскоп / Read raw acceleration and gyro
+  int16_t rawAX, rawAY, rawAZ, rawGX, rawGY, rawGZ;
+  mpuSensor.getMotion6(&rawAX, &rawAY, &rawAZ, &rawGX, &rawGY, &rawGZ);
 
-  accelerationXG = rawAccelerationX / 16384.0f;
-  accelerationYG = rawAccelerationY / 16384.0f;
-  accelerationZG = rawAccelerationZ / 16384.0f;
+  // Переводим в G / Convert to G
+  accelerationXG = rawAX / 16384.0f;
+  accelerationYG = rawAY / 16384.0f;
+  accelerationZG = rawAZ / 16384.0f;
 
-  // Вычисляем углы наклона из ускорений / Calculate tilt angles from acceleration
-  float rollAngleDegrees  = atan2(accelerationYG, accelerationZG) * 180.0f / PI;
-  float pitchAngleDegrees = atan2(-accelerationXG, sqrt(accelerationYG * accelerationYG + accelerationZG * accelerationZG)) * 180.0f / PI;
+  // Гироскоп в град/с (для диапазона ±250°/s) / Gyro in deg/s
+  gyroXDegreesPerSecond = rawGX / 131.0f;
+  gyroYDegreesPerSecond = rawGY / 131.0f;
+  gyroZDegreesPerSecond = rawGZ / 131.0f;
+
+  // Углы по акселерометру / Tilt angles from accelerometer
+  float accRollDegrees  = atan2(accelerationYG, accelerationZG) * 180.0f / PI;
+  float accPitchDegrees = atan2(-accelerationXG,
+                                sqrt(accelerationYG * accelerationYG + accelerationZG * accelerationZG))
+                          * 180.0f / PI;
+
+  // Комплементарный фильтр: объединяем гироскоп и акселерометр
+  const float complementaryAlpha = 0.98f; // доверяем гироскопу на 98%
+  fusedRollDegrees  = complementaryAlpha * (fusedRollDegrees  + gyroXDegreesPerSecond * deltaTimeSeconds)
+                    + (1.0f - complementaryAlpha) * accRollDegrees;
+  fusedPitchDegrees = complementaryAlpha * (fusedPitchDegrees + gyroYDegreesPerSecond * deltaTimeSeconds)
+                    + (1.0f - complementaryAlpha) * accPitchDegrees;
 
   // Обрезаем углы для устойчивости / Constrain angles for stability
-  float limitedRollDegrees  = constrain(rollAngleDegrees, -30.0f, 30.0f);
-  float limitedPitchDegrees = constrain(pitchAngleDegrees, -30.0f, 30.0f);
+  float limitedRollDegrees  = constrain(fusedRollDegrees,  -30.0f, 30.0f);
+  float limitedPitchDegrees = constrain(fusedPitchDegrees, -30.0f, 30.0f);
 
   currentRollDegrees  = limitedRollDegrees;
   currentPitchDegrees = limitedPitchDegrees;

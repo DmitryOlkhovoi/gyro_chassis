@@ -7,3 +7,6 @@ extern float currentPitchDegrees;
 extern float accelerationXG;
 extern float accelerationYG;
 extern float accelerationZG;
+extern float gyroXDegreesPerSecond;
+extern float gyroYDegreesPerSecond;
+extern float gyroZDegreesPerSecond;
