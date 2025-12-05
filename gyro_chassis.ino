@@ -87,9 +87,29 @@ void loop() {
   float normRoll  = constrain(roll  / 30.0f, -1.0f, 1.0f);
   float normPitch = constrain(pitch / 30.0f, -1.0f, 1.0f);
 
-  float pitchFront = normPitch * frontBalance;
-  float pitchRear  = normPitch * rearBalance;
-  float rollSide   = normRoll;
+  float accelLong = accX;
+  if (fabs(accelLong) < 0.05f) accelLong = 0.0f;
+  float normAccelLong = constrain(accelLong / 0.5f, -1.0f, 1.0f);
+
+  float accelLat = accY;
+  if (fabs(accelLat) < 0.05f) accelLat = 0.0f;
+  float normAccelLat = constrain(accelLat / 0.5f, -1.0f, 1.0f);
+
+  float weightPitchTilt  = 1.0f;
+  float weightPitchAccel = 0.7f;
+
+  float weightRollTilt   = 1.0f;
+  float weightRollAccel  = 0.7f;
+
+  float pitchBlend = normPitch * weightPitchTilt + normAccelLong * weightPitchAccel;
+  float rollBlend  = normRoll  * weightRollTilt  + normAccelLat  * weightRollAccel;
+
+  pitchBlend = constrain(pitchBlend, -1.0f, 1.0f);
+  rollBlend  = constrain(rollBlend,  -1.0f, 1.0f);
+
+  float pitchFront = pitchBlend * frontBalance;
+  float pitchRear  = pitchBlend * rearBalance;
+  float rollSide   = rollBlend;
 
   float mixFL = constrain(pitchFront - rollSide, -1.0f, 1.0f);
   float mixFR = constrain(pitchFront + rollSide, -1.0f, 1.0f);
